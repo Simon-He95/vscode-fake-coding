@@ -35,6 +35,17 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "fake-coding",
+      "properties": {
+        "fake-coding.interval": {
+          "type": "number",
+          "default": 200,
+          "description": "控制写入的速度"
+        }
+      }
+    }
   },
   "scripts": {
     "dev": "nr build",
