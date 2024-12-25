@@ -1,0 +1,60 @@
+{
+  "publisher": "simonhe",
+  "name": "vscode-fake-coding",
+  "displayName": "vscode-fake-coding",
+  "version": "0.0.1",
+  "description": "vscode-fake-coding",
+  "author": "Simon He <https://github.com/Simon-He95>",
+  "license": "MIT",
+  "funding": "https://github.com/sponsors/Simon-He95",
+  "homepage": "https://github.com/Simon-He95/vscode-fake-coding#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Simon-He95/vscode-fake-coding"
+  },
+  "bugs": {
+    "url": "https://github.com/Simon-He95/vscode-fake-coding/issues"
+  },
+  "sponsor": {
+    "url": "https://github.com/Simon-He95/sponsor"
+  },
+  "keywords": [
+    "vscode",
+    "vscode-use",
+    "vscode-template"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/index.js",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "scripts": {
+    "dev": "nr build",
+    "test": "vitest",
+    "build": "tsup",
+    "pack": "vsce package --no-dependencies",
+    "lint": "eslint . --cache",
+    "lint:fix": "nr lint --fix",
+    "publish": "vsce publish --no-dependencies",
+    "typecheck": "tsc --noEmit",
+    "release": "nr build --minify && bumpp && nr publish"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^3.9.1",
+    "@types/node": "^18.19.64",
+    "@types/vscode": "^1.95.0",
+    "@vscode-use/utils": "0.1.32",
+    "@vscode/vsce": "^3.2.1",
+    "bumpp": "^9.8.1",
+    "eslint": "^9.14.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}
