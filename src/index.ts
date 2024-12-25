@@ -1,9 +1,18 @@
-import { createExtension, getLocale, message } from '@vscode-use/utils'
+import { createBottomBar, createExtension, registerCommand } from '@vscode-use/utils'
 
 export = createExtension(() => {
-  const lan = getLocale() // 获取本地语言
-  const isZh = lan.includes('zh')
-  message.info(isZh ? '你好' : 'Hello') // 发出消息弹窗
+  let isOpen = false
+  const bar = createBottomBar({
+    text: `Fake Coding ${isOpen ? '✅' : '❎'}`,
+    command: 'fake-coding.toggle',
+    position: 'left',
+    offset: 500,
+  })
+  bar.show()
+  registerCommand('fake-coding.toggle', () => {
+    isOpen = !isOpen
+    bar.text = `Fake Coding ${isOpen ? '✅' : '❎'}`
+  })
 }, () => {
 
 })

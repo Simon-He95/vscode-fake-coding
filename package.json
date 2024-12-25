@@ -34,6 +34,8 @@
   "activationEvents": [
     "onStartupFinished"
   ],
+  "contributes": {
+  },
   "scripts": {
     "dev": "nr build",
     "test": "vitest",
