@@ -13,13 +13,14 @@ export = createExtension(() => {
     offset: 500,
   })
   bar.show()
-  let activeFileUrl: Uri
+  let activeFileUrl: Uri | null = null
   registerCommand('fake-coding.toggle', () => {
     const currentFileUrl = getCurrentFileUrl(true)
     if (isOpen && activeFileUrl) {
       resetCoding(activeFileUrl)
       isOpen = !isOpen
       bar.text = `Fake Coding ${isOpen ? '✅' : '❎'}`
+      activeFileUrl = null
       return
     }
     if (!currentFileUrl) {
