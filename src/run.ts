@@ -16,7 +16,7 @@ export async function runFakeCoding(url: vscode.Uri) {
   stop = false
   const originCode = codingMap.get(url)!
   // 清空当前文件内容
-  await updateText((edit) => {
+  updateText((edit) => {
     edit.delete(createRange(0, 0, getPosition(originCode.length).position))
   })
 
