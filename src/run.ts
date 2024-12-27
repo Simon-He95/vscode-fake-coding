@@ -1,6 +1,6 @@
-import * as vscode from 'vscode'
-import { createRange, getConfiguration, getPosition, nextTick, updateText } from '@vscode-use/utils/index'
-import { centerCursorInViewport, codingMap } from './utils'
+import type * as vscode from 'vscode'
+import { createRange, getConfiguration, getPosition, nextTick, setSelection, updateText } from '@vscode-use/utils'
+import { codingMap } from './utils'
 
 let index = 0
 let timer: NodeJS.Timeout
@@ -33,17 +33,10 @@ export async function runFakeCoding(url: vscode.Uri) {
           runFakeCoding(url)
         return
       }
+      const position = getPosition(beforeText.length, originCode).position
       updateText((edit) => {
-        const position = getPosition(beforeText.length, originCode).position
         edit.insert(position, addText)
-        const editor = vscode.window.activeTextEditor
-        if(editor){
-          // 光标跟随当前修改位置
-          const newSelection = new vscode.Selection(position,position)
-          editor.selection = newSelection
-          // 视口居中
-          centerCursorInViewport(editor)
-        }
+        setSelection(position, position)
       })
     }, interval)
   })
