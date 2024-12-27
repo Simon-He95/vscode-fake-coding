@@ -1,5 +1,5 @@
 import type { Uri } from 'vscode'
-import { createRange, getCurrentFileUrl, getPosition, jumpToLine, nextTick, saveFile, updateText } from '@vscode-use/utils'
+import { createRange, getCurrentFileUrl, getPosition, jumpToLine, nextTick, saveFile, setSelection, updateText } from '@vscode-use/utils'
 import { reset } from './run'
 import { codingMap } from './utils'
 
@@ -8,9 +8,10 @@ export async function resetCoding(url: Uri) {
   reset()
 
   if (getCurrentFileUrl(true) === url) {
-    await updateText((edit) => {
+    updateText((edit) => {
       edit.replace(createRange(0, 0, getPosition(originCode.length).position), originCode)
     })
+    setSelection([0, 0], [0, 0])
   }
   else {
     const currentFileUrl = getCurrentFileUrl()!

@@ -1,5 +1,5 @@
 import type * as vscode from 'vscode'
-import { createRange, getConfiguration, getPosition, nextTick, updateText } from '@vscode-use/utils/index'
+import { createRange, getConfiguration, getPosition, nextTick, setSelection, updateText } from '@vscode-use/utils'
 import { codingMap } from './utils'
 
 let index = 0
@@ -33,9 +33,10 @@ export async function runFakeCoding(url: vscode.Uri) {
           runFakeCoding(url)
         return
       }
+      const position = getPosition(beforeText.length, originCode).position
       updateText((edit) => {
-        const position = getPosition(beforeText.length, originCode).position
         edit.insert(position, addText)
+        setSelection(position, position)
       })
     }, interval)
   })
