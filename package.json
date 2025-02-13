@@ -1,9 +1,9 @@
 {
   "publisher": "simonhe",
   "name": "vscode-fake-coding",
-  "displayName": "vscode-fake-coding",
+  "displayName": "VSCode Fake Coding",
   "version": "0.0.4",
-  "description": "vscode-fake-coding",
+  "description": "A VSCode extension for simulating coding activity with customizable typing speed.",
   "author": "Simon He <https://github.com/Simon-He95>",
   "license": "MIT",
   "funding": "https://github.com/sponsors/Simon-He95",
@@ -20,8 +20,11 @@
   },
   "keywords": [
     "vscode",
-    "vscode-use",
-    "vscode-template"
+    "vscode-extension",
+    "coding-simulation",
+    "fake-coding",
+    "developer-tools",
+    "productivity"
   ],
   "categories": [
     "Other"
@@ -42,7 +45,7 @@
         "fake-coding.interval": {
           "type": "number",
           "default": 200,
-          "description": "控制写入的速度"
+          "description": "Control the typing speed in milliseconds."
         }
       }
     }
