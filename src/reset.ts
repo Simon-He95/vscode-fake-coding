@@ -1,5 +1,5 @@
 import type { Uri } from 'vscode'
-import { createRange, getConfiguration, getCurrentFileUrl, getPosition, jumpToLine, nextTick, saveFile, setSelection, updateText } from '@vscode-use/utils'
+import { createRange, getActiveTextEditor, getConfiguration, getCurrentFileUrl, getPosition, jumpToLine, nextTick, setSelection, updateText } from '@vscode-use/utils'
 import { stopFakeCoding } from './run'
 import { codingMap } from './utils'
 
@@ -9,32 +9,29 @@ export async function resetCoding(url: Uri) {
     return
 
   stopFakeCoding()
+  const saveOnStop = getConfiguration('fake-coding.saveOnStop') as boolean
 
-  if (getCurrentFileUrl(true) === url) {
+  if (getCurrentFileUrl() === url.fsPath) {
     updateText((edit) => {
       edit.replace(createRange(0, 0, getPosition(originCode.length).position), originCode)
     })
     setSelection([0, 0], [0, 0])
+    if (saveOnStop)
+      await nextTick(() => getActiveTextEditor()?.document.save())
   }
   else {
     const currentFileUrl = getCurrentFileUrl()
     if (currentFileUrl) {
-      jumpToLine(0, url.fsPath)?.then(() => {
-        updateText((edit) => {
-          edit.replace(createRange(0, 0, getPosition(originCode.length).position), originCode)
-        })
-        nextTick(() => {
-          jumpToLine(0, currentFileUrl)
-        })
+      await jumpToLine(0, url.fsPath)
+      updateText((edit) => {
+        edit.replace(createRange(0, 0, getPosition(originCode.length).position), originCode)
+      })
+      if (saveOnStop)
+        await nextTick(() => getActiveTextEditor()?.document.save())
+      await nextTick(() => {
+        jumpToLine(0, currentFileUrl)
       })
     }
-  }
-
-  const saveOnStop = getConfiguration('fake-coding.saveOnStop') as boolean
-  if (saveOnStop) {
-    nextTick(() => {
-      saveFile(true)
-    })
   }
 
   codingMap.delete(url)

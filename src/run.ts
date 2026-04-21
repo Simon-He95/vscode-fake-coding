@@ -3,7 +3,14 @@ import { createRange, getConfiguration, getPosition, nextTick, setSelection, upd
 import { codingMap } from './utils'
 
 export type FakeCodingStatus = 'idle' | 'running' | 'paused'
+export type FakeCodingSource = 'fileStart' | 'cursor' | 'selection'
 type Mode = 'steady' | 'realistic'
+
+export interface FakeCodingRange {
+  startOffset: number
+  endOffset: number
+  source: FakeCodingSource
+}
 
 const session = {
   status: 'idle' as FakeCodingStatus,
@@ -11,6 +18,9 @@ const session = {
   timer: null as NodeJS.Timeout | null,
   url: null as vscode.Uri | null,
   pauseCountdown: 0,
+  startOffset: 0,
+  endOffset: 0,
+  source: 'fileStart' as FakeCodingSource,
 }
 
 function randomBetween(min: number, max: number) {
@@ -27,13 +37,13 @@ function resetPauseCountdown() {
   session.pauseCountdown = randomBetween(20, 40)
 }
 
-function getNextDelay(originCode: string) {
+function getNextDelay(segment: string) {
   const interval = getConfiguration('fake-coding.interval') as number
   const mode = getConfiguration('fake-coding.mode') as Mode
   if (mode === 'steady')
     return interval
 
-  const char = originCode[session.index] ?? ''
+  const char = segment[session.index] ?? ''
   let delay = Math.round(interval * (0.7 + Math.random() * 0.6))
 
   if (',.;:)]}'.includes(char))
@@ -51,6 +61,14 @@ function getNextDelay(originCode: string) {
   return delay
 }
 
+function clearSegment(originCode: string) {
+  const start = getPosition(session.startOffset, originCode).position
+  const end = getPosition(session.endOffset, originCode).position
+  updateText((edit) => {
+    edit.delete(createRange(start, end))
+  })
+}
+
 function scheduleNextTick() {
   if (session.status !== 'running' || !session.url)
     return
@@ -58,23 +76,23 @@ function scheduleNextTick() {
   const originCode = codingMap.get(session.url)
   if (!originCode)
     return
+  const segment = originCode.slice(session.startOffset, session.endOffset)
 
   session.timer = setTimeout(() => {
     if (session.status !== 'running' || !session.url)
       return
 
-    if (session.index >= originCode.length) {
+    if (session.index >= segment.length) {
       session.index = 0
-      updateText((edit) => {
-        edit.delete(createRange(0, 0, getPosition(originCode.length).position))
-      })
+      clearSegment(originCode)
       scheduleNextTick()
       return
     }
 
-    const beforeText = originCode.slice(0, session.index)
-    const addText = originCode[session.index]
-    const position = getPosition(beforeText.length, originCode).position
+    const beforeText = segment.slice(0, session.index)
+    const addText = segment[session.index]
+    const offset = session.startOffset + beforeText.length
+    const position = getPosition(offset, originCode).position
     updateText((edit) => {
       edit.insert(position, addText)
       setSelection(position, position)
@@ -82,27 +100,32 @@ function scheduleNextTick() {
 
     session.index += 1
     scheduleNextTick()
-  }, getNextDelay(originCode))
+  }, getNextDelay(segment))
 }
 
 export function getFakeCodingStatus() {
   return session.status
 }
 
-export function startFakeCoding(url: vscode.Uri) {
+export function getFakeCodingSource() {
+  return session.source
+}
+
+export function startFakeCoding(url: vscode.Uri, range: FakeCodingRange) {
   const originCode = codingMap.get(url)
-  if (!originCode)
+  if (!originCode || range.endOffset <= range.startOffset)
     return
 
   clearTimer()
   session.status = 'running'
   session.index = 0
   session.url = url
+  session.startOffset = range.startOffset
+  session.endOffset = range.endOffset
+  session.source = range.source
   resetPauseCountdown()
 
-  updateText((edit) => {
-    edit.delete(createRange(0, 0, getPosition(originCode.length).position))
-  })
+  clearSegment(originCode)
 
   nextTick(() => {
     scheduleNextTick()
@@ -130,5 +153,8 @@ export function stopFakeCoding() {
   session.status = 'idle'
   session.index = 0
   session.url = null
+  session.startOffset = 0
+  session.endOffset = 0
+  session.source = 'fileStart'
   resetPauseCountdown()
 }

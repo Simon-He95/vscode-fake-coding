@@ -2,7 +2,7 @@
   "publisher": "simonhe",
   "name": "vscode-fake-coding",
   "displayName": "VSCode Fake Coding",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A VSCode extension for simulating coding activity with customizable typing speed.",
   "author": "Simon He <https://github.com/Simon-He95>",
   "license": "MIT",
@@ -44,6 +44,14 @@
         "title": "Fake Coding: Start"
       },
       {
+        "command": "fake-coding.startFromCursor",
+        "title": "Fake Coding: Start From Cursor"
+      },
+      {
+        "command": "fake-coding.startFromSelection",
+        "title": "Fake Coding: Start From Selection"
+      },
+      {
         "command": "fake-coding.pause",
         "title": "Fake Coding: Pause"
       },
@@ -58,6 +66,22 @@
       {
         "command": "fake-coding.toggle",
         "title": "Fake Coding: Toggle"
+      },
+      {
+        "command": "fake-coding.usePreset.steady",
+        "title": "Fake Coding: Use Preset - Steady"
+      },
+      {
+        "command": "fake-coding.usePreset.realistic",
+        "title": "Fake Coding: Use Preset - Realistic"
+      },
+      {
+        "command": "fake-coding.usePreset.fastDemo",
+        "title": "Fake Coding: Use Preset - Fast Demo"
+      },
+      {
+        "command": "fake-coding.usePreset.slowReview",
+        "title": "Fake Coding: Use Preset - Slow Review"
       }
     ],
     "configuration": {
@@ -77,6 +101,16 @@
           ],
           "default": "steady",
           "description": "Typing rhythm mode."
+        },
+        "fake-coding.startFrom": {
+          "type": "string",
+          "enum": [
+            "fileStart",
+            "cursor",
+            "selection"
+          ],
+          "default": "fileStart",
+          "description": "Where fake coding starts from."
         },
         "fake-coding.autoStopMinutes": {
           "type": "number",
@@ -99,13 +133,15 @@
   },
   "scripts": {
     "dev": "nr build",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "build": "tsup",
-    "pack": "vsce package --no-dependencies",
+    "pack": "npm run build && vsce package --no-dependencies",
     "lint": "eslint . --cache",
     "lint:fix": "nr lint --fix",
-    "publish": "vsce publish --no-dependencies",
+    "publish": "npm run build && vsce publish --no-dependencies",
     "typecheck": "tsc --noEmit",
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run build",
     "release": "nr build --minify && bumpp && nr publish"
   },
   "devDependencies": {
