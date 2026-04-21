@@ -1,9 +1,9 @@
 {
   "publisher": "simonhe",
   "name": "vscode-fake-coding",
-  "displayName": "VSCode Fake Coding",
+  "displayName": "Fake Coding for VS Code",
   "version": "0.2.0",
-  "description": "A VSCode extension for simulating coding activity with customizable typing speed.",
+  "description": "Simulate realistic coding in VS Code with fake typing, cursor or selection playback, active file switching, and auto wander across open tabs.",
   "author": "Simon He <https://github.com/Simon-He95>",
   "license": "MIT",
   "funding": "https://github.com/sponsors/Simon-He95",
@@ -20,9 +20,20 @@
   },
   "keywords": [
     "vscode",
+    "vs-code",
+    "visual-studio-code",
     "vscode-extension",
+    "coding-simulator",
     "coding-simulation",
     "fake-coding",
+    "fake-typing",
+    "typing-simulator",
+    "realistic-typing",
+    "editor-activity",
+    "cursor",
+    "selection",
+    "open-tabs",
+    "demo",
     "developer-tools",
     "productivity"
   ],
@@ -50,6 +61,14 @@
       {
         "command": "fake-coding.startFromSelection",
         "title": "Fake Coding: Start From Selection"
+      },
+      {
+        "command": "fake-coding.startInteractive",
+        "title": "Fake Coding: Start Interactive"
+      },
+      {
+        "command": "fake-coding.startWander",
+        "title": "Fake Coding: Start Wander"
       },
       {
         "command": "fake-coding.pause",

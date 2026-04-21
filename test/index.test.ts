@@ -116,4 +116,23 @@ describe('resetCoding', () => {
     expect(replace).toHaveBeenCalledTimes(1)
     expect(save).not.toHaveBeenCalled()
   })
+
+  it('restores without saving when the original file was already dirty', async () => {
+    const replace = vi.fn()
+    const save = vi.fn()
+    const url = { fsPath: '/workspace/current.ts' }
+
+    codingMap.set(url as never, 'hello')
+    mocks.getConfiguration.mockReturnValue(true)
+    mocks.getCurrentFileUrl.mockReturnValue('/workspace/current.ts')
+    mocks.getActiveTextEditor.mockReturnValue({ document: { save } })
+    mocks.updateText.mockImplementation((callback: (edit: { replace: typeof replace }) => void) => {
+      callback({ replace })
+    })
+
+    await resetCoding(url as never, { wasDirty: true })
+
+    expect(replace).toHaveBeenCalledTimes(1)
+    expect(save).not.toHaveBeenCalled()
+  })
 })

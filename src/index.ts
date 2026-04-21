@@ -1,14 +1,21 @@
-import { addEventListener, createBottomBar, createExtension, executeCommand, getActiveText, getConfiguration, getCurrentFileUrl, registerCommand } from '@vscode-use/utils'
+import { addEventListener, createBottomBar, createExtension, executeCommand, getConfiguration, registerCommand } from '@vscode-use/utils'
 import * as vscode from 'vscode'
 import { resetCoding } from './reset'
 import { getFakeCodingSource, getFakeCodingStatus, pauseFakeCoding, resumeFakeCoding, startFakeCoding } from './run'
+import { clearPersistedSession, getPersistedSession, initSessionStore, restorePersistedSession, savePersistedSession } from './sessionStore'
 import { codingMap, logger } from './utils'
+import { collectOpenFileUris, pickNextWanderTarget, randomBetween } from './wander'
 
 type StartFrom = 'fileStart' | 'cursor' | 'selection'
 type PresetName = 'steady' | 'realistic' | 'fastDemo' | 'slowReview'
+type InteractionMode = 'follow' | 'wander'
 
 let activeFileUrl: vscode.Uri | null = null
 let autoStopTimer: NodeJS.Timeout | null = null
+let wanderTimer: NodeJS.Timeout | null = null
+let interactionMode: InteractionMode | null = null
+let ignoreActiveTextChange = false
+let wanderInFlight = false
 
 function clearAutoStopTimer() {
   if (autoStopTimer)
@@ -16,17 +23,48 @@ function clearAutoStopTimer() {
   autoStopTimer = null
 }
 
-async function stopSession() {
+function clearWanderTimer() {
+  if (wanderTimer)
+    clearTimeout(wanderTimer)
+  wanderTimer = null
+}
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function runIgnoringActiveTextChange(task: () => Promise<void> | void) {
+  ignoreActiveTextChange = true
+  try {
+    await task()
+  }
+  finally {
+    ignoreActiveTextChange = false
+  }
+}
+
+async function stopSession(resetInteractiveMode = true) {
   clearAutoStopTimer()
+  clearWanderTimer()
 
   if (activeFileUrl) {
     const url = activeFileUrl
     activeFileUrl = null
-    await resetCoding(url)
+    const snapshot = getPersistedSession()
+    await resetCoding(url, {
+      wasDirty: snapshot?.fsPath === url.fsPath ? snapshot.wasDirty : false,
+    })
   }
+
+  await clearPersistedSession()
+  if (resetInteractiveMode)
+    interactionMode = null
 }
 
-export = createExtension((_context, disposals = []) => {
+export = createExtension(async (context, disposals = []) => {
+  initSessionStore(context)
+  await restorePersistedSession()
+
   const bar = createBottomBar({
     text: 'Fake Coding ■',
     command: 'fake-coding.toggle',
@@ -54,6 +92,9 @@ export = createExtension((_context, disposals = []) => {
         : '■'
     const parts = [`Fake Coding ${icon}`, mode]
 
+    if (interactionMode)
+      parts.push(interactionMode)
+
     if (source !== 'fileStart')
       parts.push(formatSourceLabel(source))
 
@@ -74,16 +115,27 @@ export = createExtension((_context, disposals = []) => {
     }, minutes * 60 * 1000)
   }
 
-  function resolveStartRange(source: StartFrom) {
-    const editor = vscode.window.activeTextEditor
+  function armWander() {
+    clearWanderTimer()
+    if (interactionMode !== 'wander' || getFakeCodingStatus() !== 'running')
+      return
+
+    wanderTimer = setTimeout(() => {
+      void runWanderStep()
+    }, randomBetween(2500, 7000))
+  }
+
+  function resolveStartRange(source: StartFrom, editor: vscode.TextEditor | undefined, strict = true) {
     if (!editor) {
-      logger.error('你必须在打开一个文件的状态下去使用')
+      if (strict)
+        logger.error('你必须在打开一个文件的状态下去使用')
       return null
     }
 
     const originCode = editor.document.getText()
     if (!originCode) {
-      logger.error('你必须对一个有内容的文件去使用')
+      if (strict)
+        logger.error('你必须对一个有内容的文件去使用')
       return null
     }
 
@@ -98,6 +150,13 @@ export = createExtension((_context, disposals = []) => {
     if (source === 'cursor') {
       const startOffset = editor.document.offsetAt(editor.selection.active)
       if (startOffset >= originCode.length) {
+        if (!strict) {
+          return {
+            startOffset: 0,
+            endOffset: originCode.length,
+            source: 'fileStart' as const,
+          }
+        }
         logger.error('光标后没有可输入的内容')
         return null
       }
@@ -110,6 +169,8 @@ export = createExtension((_context, disposals = []) => {
     }
 
     if (editor.selection.isEmpty) {
+      if (!strict)
+        return resolveStartRange('cursor', editor, false)
       logger.error('你必须先选择一段内容')
       return null
     }
@@ -117,6 +178,8 @@ export = createExtension((_context, disposals = []) => {
     const startOffset = editor.document.offsetAt(editor.selection.start)
     const endOffset = editor.document.offsetAt(editor.selection.end)
     if (startOffset >= endOffset) {
+      if (!strict)
+        return resolveStartRange('cursor', editor, false)
       logger.error('你必须先选择一段内容')
       return null
     }
@@ -152,58 +215,151 @@ export = createExtension((_context, disposals = []) => {
     refreshBar()
   }
 
-  function startWithSource(source: StartFrom) {
+  function moveWanderCursor(editor: vscode.TextEditor) {
+    const maxLine = editor.document.lineCount - 1
+    if (maxLine < 0)
+      return
+
+    const line = randomBetween(0, maxLine)
+    const text = editor.document.lineAt(line).text
+    const character = text.length > 0 ? randomBetween(0, text.length) : 0
+    const position = new vscode.Position(line, character)
+    const range = new vscode.Range(position, position)
+    editor.selection = new vscode.Selection(position, position)
+    editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport)
+  }
+
+  async function startWithSource(source: StartFrom, options?: { editor?: vscode.TextEditor, mode?: InteractionMode, strict?: boolean }) {
     if (getFakeCodingStatus() !== 'idle')
-      return
+      return false
 
-    const currentFileUrl = getCurrentFileUrl(true)
-    if (!currentFileUrl) {
-      logger.error('你必须在打开一个文件的状态下去使用')
-      return
+    const editor = options?.editor || vscode.window.activeTextEditor
+    const currentFileUrl = editor?.document.uri
+    if (!currentFileUrl || !editor) {
+      if (options?.strict !== false)
+        logger.error('你必须在打开一个文件的状态下去使用')
+      return false
     }
 
-    const originCode = getActiveText()
+    const originCode = editor.document.getText()
     if (!originCode) {
-      logger.error('你必须对一个有内容的文件去使用')
-      return
+      if (options?.strict !== false)
+        logger.error('你必须对一个有内容的文件去使用')
+      return false
     }
 
-    const range = resolveStartRange(source)
+    const range = resolveStartRange(source, editor, options?.strict !== false)
     if (!range)
-      return
+      return false
 
     codingMap.set(currentFileUrl, originCode)
+    await savePersistedSession({
+      content: originCode,
+      fsPath: currentFileUrl.fsPath,
+      wasDirty: editor.document.isDirty,
+    })
     activeFileUrl = currentFileUrl
+    interactionMode = options?.mode ?? null
     startFakeCoding(currentFileUrl, range)
     armAutoStop()
+    armWander()
     refreshBar()
+    return true
+  }
+
+  async function handoffToEditor(mode: InteractionMode, editor?: vscode.TextEditor) {
+    const nextEditor = editor || vscode.window.activeTextEditor
+    if (nextEditor && activeFileUrl && nextEditor.document.uri.fsPath === activeFileUrl.fsPath)
+      return
+
+    await stopSession(false)
+    const source = ((getConfiguration('fake-coding.startFrom') as StartFrom) || 'fileStart')
+    await startWithSource(source, {
+      editor: nextEditor,
+      mode,
+      strict: false,
+    })
+  }
+
+  async function runWanderStep() {
+    if (interactionMode !== 'wander' || wanderInFlight || getFakeCodingStatus() !== 'running')
+      return
+
+    wanderInFlight = true
+    try {
+      await runIgnoringActiveTextChange(async () => {
+        const nextUri = pickNextWanderTarget(collectOpenFileUris(vscode.window.tabGroups.all), activeFileUrl?.fsPath)
+        if (!nextUri)
+          return
+
+        await stopSession(false)
+        await delay(randomBetween(250, 900))
+
+        const document = await vscode.workspace.openTextDocument(nextUri)
+        const editor = await vscode.window.showTextDocument(document, {
+          preview: false,
+          preserveFocus: false,
+        })
+
+        const source = ((getConfiguration('fake-coding.startFrom') as StartFrom) || 'fileStart')
+        if (source === 'fileStart')
+          moveWanderCursor(editor)
+
+        await delay(randomBetween(200, 800))
+        await startWithSource(source, {
+          editor,
+          mode: 'wander',
+          strict: false,
+        })
+      })
+    }
+    finally {
+      wanderInFlight = false
+      if (interactionMode === 'wander' && getFakeCodingStatus() === 'running')
+        armWander()
+      refreshBar()
+    }
   }
 
   registerCommand('fake-coding.start', () => {
     const source = (getConfiguration('fake-coding.startFrom') as StartFrom) || 'fileStart'
-    startWithSource(source)
+    void startWithSource(source)
   })
 
   registerCommand('fake-coding.startFromCursor', () => {
-    startWithSource('cursor')
+    void startWithSource('cursor')
   })
 
   registerCommand('fake-coding.startFromSelection', () => {
-    startWithSource('selection')
+    void startWithSource('selection')
+  })
+
+  registerCommand('fake-coding.startInteractive', () => {
+    const source = (getConfiguration('fake-coding.startFrom') as StartFrom) || 'fileStart'
+    void startWithSource(source, { mode: 'follow' })
+  })
+
+  registerCommand('fake-coding.startWander', () => {
+    const source = (getConfiguration('fake-coding.startFrom') as StartFrom) || 'fileStart'
+    void startWithSource(source, { mode: 'wander' })
   })
 
   registerCommand('fake-coding.pause', () => {
+    clearWanderTimer()
     pauseFakeCoding()
     refreshBar()
   })
 
   registerCommand('fake-coding.resume', () => {
     resumeFakeCoding()
+    armWander()
     refreshBar()
   })
 
   registerCommand('fake-coding.stop', async () => {
-    await stopSession()
+    await runIgnoringActiveTextChange(async () => {
+      await stopSession()
+    })
     refreshBar()
   })
 
@@ -232,12 +388,44 @@ export = createExtension((_context, disposals = []) => {
     await applyPreset('slowReview')
   })
 
-  addEventListener('activeText-change', () => {
-    if (getFakeCodingStatus() !== 'idle')
-      executeCommand('fake-coding.stop')
+  addEventListener('activeText-change', (editor) => {
+    if (ignoreActiveTextChange)
+      return
+
+    if (interactionMode === 'follow') {
+      void runIgnoringActiveTextChange(async () => {
+        if (getFakeCodingStatus() === 'paused')
+          await stopSession(false)
+        else
+          await handoffToEditor('follow', editor)
+        refreshBar()
+      })
+      return
+    }
+
+    if (interactionMode === 'wander') {
+      void runIgnoringActiveTextChange(async () => {
+        clearWanderTimer()
+        if (getFakeCodingStatus() === 'paused')
+          await stopSession(false)
+        else
+          await handoffToEditor('wander', editor)
+        refreshBar()
+      })
+      return
+    }
+
+    if (getFakeCodingStatus() !== 'idle') {
+      void runIgnoringActiveTextChange(async () => {
+        await stopSession()
+        refreshBar()
+      })
+    }
   })
 
   refreshBar()
 }, () => {
-  void stopSession()
+  void runIgnoringActiveTextChange(async () => {
+    await stopSession()
+  })
 })

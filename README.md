@@ -11,12 +11,14 @@
 
 - Simulate coding activity with customizable typing speed
 - Automatically types out the current text content
-- Support `Start`, `Start From Cursor`, `Start From Selection`, `Pause`, `Resume`, and `Stop` commands
+- Support `Start`, `Start From Cursor`, `Start From Selection`, `Start Interactive`, `Start Wander`, `Pause`, `Resume`, and `Stop` commands
 - Support `steady` and `realistic` typing rhythm modes
 - Support typing from the file start, current cursor, or current selection
 - Support preset commands for different fake coding scenarios
 - Support automatic stop after a configurable duration
+- Support following your real editor switches or auto-wandering across opened file tabs
 - Restore original content when stopped or when switching files
+- Persist the active snapshot and restore it after an unexpected crash or reload
 - Optionally skip saving the file when stopping
 - Easy to use and configure
 
@@ -40,23 +42,28 @@ To use the extension, follow these steps:
 3. You can also start from a more specific range:
    - `Fake Coding: Start From Cursor`
    - `Fake Coding: Start From Selection`
-4. The extension will start typing out the selected range or remaining content
-4. Use the status bar button or Command Palette to control the session:
+4. For more realistic interaction, you can also use:
+   - `Fake Coding: Start Interactive`: follow your real editor switches
+   - `Fake Coding: Start Wander`: automatically switch across opened file tabs with short pauses
+5. The extension will start typing out the selected range or remaining content
+6. Use the status bar button or Command Palette to control the session:
    - `Fake Coding: Pause`
    - `Fake Coding: Resume`
    - `Fake Coding: Stop`
-5. You can switch presets from the Command Palette:
+7. You can switch presets from the Command Palette:
    - `Fake Coding: Use Preset - Steady`
    - `Fake Coding: Use Preset - Realistic`
    - `Fake Coding: Use Preset - Fast Demo`
    - `Fake Coding: Use Preset - Slow Review`
-6. When you stop the session or switch to another file, the original content is restored
+8. When you stop the session or switch to another file, the original content is restored. Only one file is ever temporarily modified at a time, and dirty files are restored without being auto-saved.
 
 ## Commands
 
 - `Fake Coding: Start`: start fake coding in the current file
 - `Fake Coding: Start From Cursor`: start fake coding from the current cursor position
 - `Fake Coding: Start From Selection`: start fake coding only within the current selection
+- `Fake Coding: Start Interactive`: follow the file you activate manually
+- `Fake Coding: Start Wander`: automatically wander across opened file tabs
 - `Fake Coding: Pause`: pause the current fake coding session
 - `Fake Coding: Resume`: resume the paused session
 - `Fake Coding: Stop`: stop the session and restore the original content
@@ -75,6 +82,8 @@ You can customize the extension with these settings:
 - `fake-coding.startFrom`: start fake coding from `fileStart`, `cursor`, or `selection`
 - `fake-coding.autoStopMinutes`: automatically stop after `0`, `5`, `15`, or `30` minutes
 - `fake-coding.saveOnStop`: whether to save the file after restoring the original content
+
+Crash safety note: the extension stores the original content of the active fake-coding file in workspace state. If VSCode reloads or crashes mid-session, that snapshot is restored on the next activation.
 
 ```json
 {

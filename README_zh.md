@@ -11,12 +11,14 @@
 
 - 通过可自定义的打字速度模拟编码活动
 - 自动输入当前文本内容
-- 支持 `Start`、`Start From Cursor`、`Start From Selection`、`Pause`、`Resume`、`Stop` 命令
+- 支持 `Start`、`Start From Cursor`、`Start From Selection`、`Start Interactive`、`Start Wander`、`Pause`、`Resume`、`Stop` 命令
 - 支持 `steady` 和 `realistic` 两种打字节奏
 - 支持从文件开头、当前光标或当前选区开始模拟输入
 - 支持不同场景的 preset 命令
 - 支持按时长自动停止
+- 支持跟随你真实切换文件，或自动在已打开文件 tab 之间游走
 - 停止或切换文件时恢复原始内容
+- 支持异常退出或重载后的快照恢复
 - 支持停止时不保存文件
 - 易于使用和配置
 
@@ -40,23 +42,28 @@
 3. 你也可以从更具体的范围开始：
    - `Fake Coding: Start From Cursor`
    - `Fake Coding: Start From Selection`
-4. 插件会从指定范围开始输入内容
-4. 你可以通过状态栏按钮或命令面板控制当前会话：
+4. 如果你想要更真实的交互，也可以使用：
+   - `Fake Coding: Start Interactive`：跟随你手动激活的文件切换
+   - `Fake Coding: Start Wander`：自动在已打开文件 tab 之间切换，并带有短暂停顿
+5. 插件会从指定范围开始输入内容
+6. 你可以通过状态栏按钮或命令面板控制当前会话：
    - `Fake Coding: Pause`
    - `Fake Coding: Resume`
    - `Fake Coding: Stop`
-5. 你可以通过命令面板切换 preset：
+7. 你可以通过命令面板切换 preset：
    - `Fake Coding: Use Preset - Steady`
    - `Fake Coding: Use Preset - Realistic`
    - `Fake Coding: Use Preset - Fast Demo`
    - `Fake Coding: Use Preset - Slow Review`
-6. 当你停止会话或切换到其他文件时，原始内容会被恢复
+8. 当你停止会话或切换到其他文件时，原始内容会被恢复。同一时间只会有一个文件处于临时改写状态；如果原文件本来就是未保存状态，恢复时不会自动保存。
 
 ## 命令
 
 - `Fake Coding: Start`：在当前文件中开始模拟输入
 - `Fake Coding: Start From Cursor`：从当前光标位置开始模拟输入
 - `Fake Coding: Start From Selection`：仅在当前选区内模拟输入
+- `Fake Coding: Start Interactive`：跟随你手动激活的文件继续模拟输入
+- `Fake Coding: Start Wander`：自动在已打开文件 tab 之间游走
 - `Fake Coding: Pause`：暂停当前模拟会话
 - `Fake Coding: Resume`：继续已暂停的会话
 - `Fake Coding: Stop`：停止会话并恢复原始内容
@@ -75,6 +82,8 @@
 - `fake-coding.startFrom`：模拟输入起点，可选 `fileStart`、`cursor`、`selection`
 - `fake-coding.autoStopMinutes`：自动停止时间，可选 `0`、`5`、`15`、`30`
 - `fake-coding.saveOnStop`：恢复原始内容后是否保存文件
+
+异常恢复说明：插件会把当前 fake coding 文件的原始内容快照保存到 workspace state。若 VSCode 在会话中途重载或崩溃，下次激活扩展时会优先恢复该快照。
 
 ```json
 {
