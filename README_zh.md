@@ -11,7 +11,11 @@
 
 - 通过可自定义的打字速度模拟编码活动
 - 自动输入当前文本内容
-- 停用时恢复原始内容
+- 支持 `Start`、`Pause`、`Resume`、`Stop` 命令
+- 支持 `steady` 和 `realistic` 两种打字节奏
+- 支持按时长自动停止
+- 停止或切换文件时恢复原始内容
+- 支持停止时不保存文件
 - 易于使用和配置
 
 ## 安装
@@ -32,15 +36,35 @@
 1. 在 VSCode 中打开一个文件
 2. 从命令面板 (`Ctrl+Shift+P`) 运行 `Fake Coding: Start` 命令激活插件
 3. 插件将开始输入文件内容
-4. 要停止插件，请从命令面板运行 `Fake Coding: Stop` 命令
+4. 你可以通过状态栏按钮或命令面板控制当前会话：
+   - `Fake Coding: Pause`
+   - `Fake Coding: Resume`
+   - `Fake Coding: Stop`
+5. 当你停止会话或切换到其他文件时，原始内容会被恢复
+
+## 命令
+
+- `Fake Coding: Start`：在当前文件中开始模拟输入
+- `Fake Coding: Pause`：暂停当前模拟会话
+- `Fake Coding: Resume`：继续已暂停的会话
+- `Fake Coding: Stop`：停止会话并恢复原始内容
+- `Fake Coding: Toggle`：根据当前状态在开始、暂停、继续之间切换
 
 ## 配置
 
-你可以通过在 VSCode 设置中更改 `fake-coding.interval` 设置来自定义打字速度。该值以毫秒为单位。
+你可以通过以下配置项来自定义插件行为：
+
+- `fake-coding.interval`：基础打字间隔，单位为毫秒
+- `fake-coding.mode`：打字节奏模式，可选 `steady` 或 `realistic`
+- `fake-coding.autoStopMinutes`：自动停止时间，可选 `0`、`5`、`15`、`30`
+- `fake-coding.saveOnStop`：恢复原始内容后是否保存文件
 
 ```json
 {
-  "fake-coding.interval": 200
+  "fake-coding.interval": 200,
+  "fake-coding.mode": "steady",
+  "fake-coding.autoStopMinutes": 0,
+  "fake-coding.saveOnStop": true
 }
 ```
 

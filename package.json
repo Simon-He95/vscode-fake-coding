@@ -2,7 +2,7 @@
   "publisher": "simonhe",
   "name": "vscode-fake-coding",
   "displayName": "VSCode Fake Coding",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "description": "A VSCode extension for simulating coding activity with customizable typing speed.",
   "author": "Simon He <https://github.com/Simon-He95>",
   "license": "MIT",
@@ -38,6 +38,28 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "commands": [
+      {
+        "command": "fake-coding.start",
+        "title": "Fake Coding: Start"
+      },
+      {
+        "command": "fake-coding.pause",
+        "title": "Fake Coding: Pause"
+      },
+      {
+        "command": "fake-coding.resume",
+        "title": "Fake Coding: Resume"
+      },
+      {
+        "command": "fake-coding.stop",
+        "title": "Fake Coding: Stop"
+      },
+      {
+        "command": "fake-coding.toggle",
+        "title": "Fake Coding: Toggle"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "fake-coding",
@@ -46,6 +68,31 @@
           "type": "number",
           "default": 200,
           "description": "Control the typing speed in milliseconds."
+        },
+        "fake-coding.mode": {
+          "type": "string",
+          "enum": [
+            "steady",
+            "realistic"
+          ],
+          "default": "steady",
+          "description": "Typing rhythm mode."
+        },
+        "fake-coding.autoStopMinutes": {
+          "type": "number",
+          "enum": [
+            0,
+            5,
+            15,
+            30
+          ],
+          "default": 0,
+          "description": "Automatically stop after the specified minutes. 0 disables it."
+        },
+        "fake-coding.saveOnStop": {
+          "type": "boolean",
+          "default": true,
+          "description": "Save the file after restoring original content when stopped."
         }
       }
     }
