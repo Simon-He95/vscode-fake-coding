@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   openTextDocument: vi.fn(),
   setSelection: vi.fn(),
   stopFakeCoding: vi.fn(),
+  waitForPendingFakeCodingEdit: vi.fn(async () => {}),
 }))
 
 vi.mock('@vscode-use/utils', () => ({
@@ -48,6 +49,7 @@ vi.mock('vscode', () => ({
 
 vi.mock('../src/run', () => ({
   stopFakeCoding: mocks.stopFakeCoding,
+  waitForPendingFakeCodingEdit: mocks.waitForPendingFakeCodingEdit,
 }))
 
 describe('resetCoding', () => {
@@ -55,12 +57,14 @@ describe('resetCoding', () => {
     codingMap.clear()
     vi.clearAllMocks()
 
+    mocks.applyEdit.mockResolvedValue(true)
     mocks.getConfiguration.mockReturnValue(true)
     mocks.openTextDocument.mockResolvedValue({
       lineAt: () => ({ text: 'fake' }),
       lineCount: 1,
       save: vi.fn(async () => true),
     })
+    mocks.waitForPendingFakeCodingEdit.mockImplementation(async () => {})
   })
 
   it('restores and saves only the current file', async () => {
@@ -79,6 +83,7 @@ describe('resetCoding', () => {
 
     expect(restored).toBe(true)
     expect(mocks.stopFakeCoding).toHaveBeenCalledTimes(1)
+    expect(mocks.waitForPendingFakeCodingEdit).toHaveBeenCalledTimes(1)
     expect(mocks.openTextDocument).toHaveBeenCalledWith(url)
     expect(mocks.applyEdit).toHaveBeenCalledTimes(1)
     expect(mocks.setSelection).toHaveBeenCalledWith([0, 0], [0, 0])
@@ -160,5 +165,29 @@ describe('resetCoding', () => {
 
     expect(restored).toBe(false)
     expect(codingMap.get(url as never)).toBe('hello')
+  })
+
+  it('waits for any in-flight fake typing edit before restoring the file', async () => {
+    let resolvePendingEdit!: () => void
+    const url = { fsPath: '/workspace/current.ts' }
+
+    codingMap.set(url as never, 'hello')
+    mocks.getCurrentFileUrl.mockReturnValue('/workspace/current.ts')
+    mocks.waitForPendingFakeCodingEdit.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      resolvePendingEdit = () => resolve()
+    }))
+
+    const restorePromise = resetCoding(url as never)
+    await Promise.resolve()
+
+    expect(mocks.stopFakeCoding).toHaveBeenCalledTimes(1)
+    expect(mocks.openTextDocument).not.toHaveBeenCalled()
+
+    resolvePendingEdit()
+    const restored = await restorePromise
+
+    expect(restored).toBe(true)
+    expect(mocks.openTextDocument).toHaveBeenCalledWith(url)
+    expect(mocks.applyEdit).toHaveBeenCalledTimes(1)
   })
 })

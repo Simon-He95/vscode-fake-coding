@@ -187,6 +187,7 @@ export = createExtension(async (context, disposals = []) => {
     const maxDelay = Math.max(minSeconds, maxSeconds) * 1000
 
     wanderTimer = setTimeout(() => {
+      wanderTimer = null
       void runWanderStep()
     }, randomBetween(minDelay, maxDelay))
   }
@@ -456,7 +457,7 @@ export = createExtension(async (context, disposals = []) => {
     interactionMode = options?.mode ?? null
     startFakeCoding(currentFileUrl, {
       ...range,
-      loop: !options?.mode,
+      loop: options?.mode === 'wander' ? true : !options?.mode,
     })
     armAutoStop()
     armWander()
@@ -481,6 +482,25 @@ export = createExtension(async (context, disposals = []) => {
     })
   }
 
+  async function restartWanderInEditor(editor: vscode.TextEditor, source: StartFrom) {
+    const restored = await stopSession(false)
+    if (!restored)
+      return false
+
+    await driftCursor(editor, {
+      randomFirst: true,
+      spread: 10,
+      steps: randomBetween(2, 3),
+    })
+    await delay(randomBetween(450, 1200))
+
+    return startWithSource(source, {
+      editor,
+      mode: 'wander',
+      strict: false,
+    })
+  }
+
   async function runWanderStep() {
     if (interactionMode !== 'wander' || wanderInFlight || !canAutoHandoff())
       return
@@ -489,43 +509,42 @@ export = createExtension(async (context, disposals = []) => {
     try {
       await runIgnoringActiveTextChange(async () => {
         const previousUrl = activeFileUrl
-        const snapshot = getPersistedSession()
         const previousEditor = vscode.window.activeTextEditor
         const previousStatus = getFakeCodingStatus()
+        const isCurrentEditor = !!previousEditor && !!previousUrl && previousEditor.document.uri.fsPath === previousUrl.fsPath
         if (previousUrl && previousStatus === 'running')
           pauseFakeCoding()
 
         try {
-          if (previousEditor && previousUrl && previousEditor.document.uri.fsPath === previousUrl.fsPath)
+          if (isCurrentEditor && previousEditor)
             await driftCursor(previousEditor, { spread: 6, steps: randomBetween(1, 2) })
 
           await delay(randomBetween(900, 1800))
 
+          const source = ((getConfiguration('fake-coding.startFrom') as StartFrom) || 'fileStart')
           const editor = await findNextWanderEditor(previousUrl?.fsPath)
           if (!editor) {
+            if (isCurrentEditor && previousEditor) {
+              await restartWanderInEditor(previousEditor, source)
+              return
+            }
+
             if (previousStatus === 'running')
               resumeFakeCoding()
             return
           }
 
-          const source = ((getConfiguration('fake-coding.startFrom') as StartFrom) || 'fileStart')
           await driftCursor(editor, {
             randomFirst: true,
             spread: 10,
             steps: randomBetween(2, 3),
           })
 
-          if (previousUrl) {
-            const restored = await resetCoding(previousUrl, {
-              wasDirty: snapshot?.fsPath === previousUrl.fsPath ? snapshot.wasDirty : false,
-            })
-            if (!restored) {
+          const restored = await stopSession(false)
+          if (!restored) {
+            if (previousUrl)
               logger.error(`failed to restore previous file during wander: ${previousUrl.fsPath}`)
-              return
-            }
-
-            activeFileUrl = null
-            await clearPersistedSession()
+            return
           }
 
           await delay(randomBetween(450, 1200))
@@ -536,14 +555,10 @@ export = createExtension(async (context, disposals = []) => {
           })
         }
         catch (error) {
-          if (previousUrl) {
-            const restored = await resetCoding(previousUrl, {
-              wasDirty: snapshot?.fsPath === previousUrl.fsPath ? snapshot.wasDirty : false,
-            })
-            if (restored) {
-              activeFileUrl = null
-              await clearPersistedSession()
-            }
+          if (previousUrl && activeFileUrl?.fsPath === previousUrl.fsPath) {
+            const restored = await stopSession(false)
+            if (!restored)
+              logger.error(`failed to restore previous file after wander error: ${previousUrl.fsPath}`)
           }
           logger.error(`wander step failed: ${String(error)}`)
         }
@@ -591,8 +606,9 @@ export = createExtension(async (context, disposals = []) => {
   })
 
   registerCommand('fake-coding.pause', () => {
-    clearWanderTimer()
-    pauseFakeCoding()
+    void runIgnoringActiveTextChange(async () => {
+      await stopSession()
+    })
     refreshBar()
   })
 
@@ -621,9 +637,7 @@ export = createExtension(async (context, disposals = []) => {
         await startWithSource(source, mode === 'single' ? undefined : { mode })
       })
     }
-    if (status === 'running' || status === 'waiting')
-      return executeCommand('fake-coding.pause')
-    return executeCommand('fake-coding.resume')
+    return executeCommand('fake-coding.stop')
   })
 
   registerCommand('fake-coding.usePreset.steady', async () => {

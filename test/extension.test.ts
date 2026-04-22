@@ -25,7 +25,16 @@ const mocks = vi.hoisted(() => {
     }
   }
 
-  class Selection extends Range {}
+  class Selection extends Range {
+    active: Position
+    isEmpty: boolean
+
+    constructor(start: Position, end: Position) {
+      super(start, end)
+      this.active = end
+      this.isEmpty = start.line === end.line && start.character === end.character
+    }
+  }
 
   const state = {
     Position,
@@ -39,9 +48,12 @@ const mocks = vi.hoisted(() => {
       document: {
         getText: () => string
         isDirty: boolean
+        lineAt: (line: number) => { text: string }
+        lineCount: number
         offsetAt: (position: { line: number, character: number }) => number
         uri: { fsPath: string }
       }
+      revealRange: ReturnType<typeof vi.fn>
       selection: {
         active: { line: number, character: number }
         end: { line: number, character: number }
@@ -96,8 +108,10 @@ const mocks = vi.hoisted(() => {
     registerCommand: vi.fn((name: string, callback: () => unknown) => {
       commands.set(name, callback)
     }),
+    randomBetween: vi.fn(() => 3000),
     resetCoding: vi.fn(async () => {
       state.status = 'idle'
+      return true
     }),
     restorePersistedSession: vi.fn(async () => false),
     resumeFakeCoding: vi.fn(() => {
@@ -196,7 +210,7 @@ vi.mock('../src/wander', () => ({
   listWanderTargets: vi.fn(() => []),
   matchesWanderIgnorePath: vi.fn(() => false),
   pickNextWanderTarget: vi.fn(() => null),
-  randomBetween: vi.fn(() => 3000),
+  randomBetween: mocks.randomBetween,
   resolveActivityWindow: vi.fn((originCode: string) => ({
     endOffset: originCode.length,
     startOffset: 0,
@@ -222,9 +236,12 @@ function createEditor(fsPath: string, text: string) {
     document: {
       getText: () => text,
       isDirty: false,
+      lineAt: () => ({ text }),
+      lineCount: 1,
       offsetAt: ({ character }: { character: number }) => character,
       uri: { fsPath },
     },
+    revealRange: vi.fn(),
     selection: {
       active: { line: 0, character: 0 },
       end: { line: 0, character: 0 },
@@ -243,6 +260,7 @@ describe('extension active editor handling', () => {
     mocks.codingMap.clear()
     mocks.status = 'idle'
     mocks.statusChangeListener = null
+    mocks.randomBetween.mockImplementation(() => 3000)
     mocks.activeEditor = createEditor('/workspace/demo.ts', 'const value = 1')
 
     await import('../src/index')
@@ -271,26 +289,52 @@ describe('extension active editor handling', () => {
     expect(mocks.startFakeCoding).toHaveBeenCalledTimes(1)
   })
 
-  it('treats waiting as an active session when toggling from the bottom bar', async () => {
+  it('starts auto wander in loop mode so typing keeps going until switched', async () => {
+    await mocks.commands.get('fake-coding.startWander')?.()
+
+    expect(mocks.startFakeCoding).toHaveBeenCalledTimes(1)
+    const startArgs = mocks.startFakeCoding.mock.calls[0] as unknown[] | undefined
+    expect(startArgs).toBeDefined()
+    const range = startArgs?.[1] as { loop?: boolean } | undefined
+    expect(range?.loop).toBe(true)
+  })
+
+  it('ends the current session when toggling from the bottom bar while active', async () => {
     mocks.status = 'waiting'
 
     await mocks.commands.get('fake-coding.toggle')?.()
 
-    expect(mocks.executeCommand).toHaveBeenCalledWith('fake-coding.pause')
+    expect(mocks.executeCommand).toHaveBeenCalledWith('fake-coding.stop')
   })
 
-  it('re-arms wander after a waiting step with no eligible target', async () => {
+  it('treats pause as ending the current session and restoring state', async () => {
+    await mocks.commands.get('fake-coding.start')?.()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    await mocks.commands.get('fake-coding.pause')?.()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(mocks.resetCoding).toHaveBeenCalledTimes(1)
+    expect(mocks.clearPersistedSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('restarts fake coding in the current file when no other wander target exists', async () => {
     vi.useFakeTimers()
     try {
+      mocks.randomBetween.mockImplementation((...values: number[]) => values[0] ?? 0)
       await mocks.commands.get('fake-coding.startWander')?.()
-      mocks.activeEditor = null
-      mocks.status = 'waiting'
-      mocks.statusChangeListener?.('waiting')
 
       expect(vi.getTimerCount()).toBe(1)
 
-      await vi.advanceTimersByTimeAsync(3000)
+      await vi.advanceTimersByTimeAsync(13000)
+      await Promise.resolve()
+      await Promise.resolve()
 
+      expect(mocks.pauseFakeCoding).toHaveBeenCalledTimes(1)
+      expect(mocks.resetCoding).toHaveBeenCalledTimes(1)
+      expect(mocks.startFakeCoding).toHaveBeenCalledTimes(2)
       expect(vi.getTimerCount()).toBe(1)
     }
     finally {

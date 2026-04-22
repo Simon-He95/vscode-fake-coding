@@ -24,6 +24,7 @@ const session = {
   index: 0,
   timer: null as NodeJS.Timeout | null,
   url: null as vscode.Uri | null,
+  pendingEdit: null as Promise<boolean> | null,
   pauseCountdown: 0,
   loop: true,
   startOffset: 0,
@@ -80,7 +81,16 @@ async function applyActiveEditorEdit(callback: Parameters<vscode.TextEditor['edi
   if (!editor)
     return false
 
-  return runAsInternalEdit(() => editor.edit(callback))
+  const pendingEdit = runAsInternalEdit(() => editor.edit(callback))
+  session.pendingEdit = pendingEdit
+
+  try {
+    return await pendingEdit
+  }
+  finally {
+    if (session.pendingEdit === pendingEdit)
+      session.pendingEdit = null
+  }
 }
 
 function clearSegment(originCode: string) {
@@ -166,6 +176,10 @@ export function getFakeCodingProgress(): FakeCodingProgress | null {
 
 export function onFakeCodingStatusChange(listener?: (status: FakeCodingStatus) => void) {
   statusChangeListener = listener ?? null
+}
+
+export async function waitForPendingFakeCodingEdit() {
+  await session.pendingEdit
 }
 
 export function startFakeCoding(url: vscode.Uri, range: FakeCodingRange) {

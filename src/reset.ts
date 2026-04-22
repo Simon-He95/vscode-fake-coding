@@ -1,7 +1,7 @@
 import type { Uri } from 'vscode'
 import { getConfiguration, getCurrentFileUrl, setSelection } from '@vscode-use/utils'
 import * as vscode from 'vscode'
-import { stopFakeCoding } from './run'
+import { stopFakeCoding, waitForPendingFakeCodingEdit } from './run'
 import { codingMap, logger, runAsInternalEdit } from './utils'
 
 function createFullRange(document: vscode.TextDocument) {
@@ -16,6 +16,7 @@ export async function resetCoding(url: Uri, options?: { wasDirty?: boolean }) {
     return true
 
   stopFakeCoding()
+  await waitForPendingFakeCodingEdit()
   const saveOnStop = getConfiguration('fake-coding.saveOnStop') as boolean
   const shouldSave = saveOnStop && !options?.wasDirty
   const isCurrentFile = getCurrentFileUrl() === url.fsPath
