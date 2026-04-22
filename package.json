@@ -2,7 +2,7 @@
   "publisher": "simonhe",
   "name": "vscode-fake-coding",
   "displayName": "Fake Coding for VS Code",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Simulate realistic coding in VS Code with fake typing, cursor or selection playback, active file switching, and auto wander across open tabs.",
   "author": "Simon He <https://github.com/Simon-He95>",
   "license": "MIT",
