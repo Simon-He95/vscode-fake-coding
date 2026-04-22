@@ -42,20 +42,22 @@ To use the extension, follow these steps:
 3. You can also start from a more specific range:
    - `Fake Coding: Start From Cursor`
    - `Fake Coding: Start From Selection`
-4. For more realistic interaction, you can also use:
+4. You can also click the status bar button while idle and choose a start mode directly.
+5. For more realistic interaction, you can also use:
    - `Fake Coding: Start Interactive`: follow your real editor switches
    - `Fake Coding: Start Wander`: automatically switch across opened file tabs with short pauses
-5. The extension will start typing out the selected range or remaining content
-6. Use the status bar button or Command Palette to control the session:
+6. `Follow` and `Wander` work on a smaller local activity window instead of replaying the entire file, which makes switching look more natural and avoids full-file flashing.
+7. The extension will start typing out the selected range or remaining content
+8. Use the status bar button or Command Palette to control the session:
    - `Fake Coding: Pause`
    - `Fake Coding: Resume`
    - `Fake Coding: Stop`
-7. You can switch presets from the Command Palette:
+9. You can switch presets from the Command Palette:
    - `Fake Coding: Use Preset - Steady`
    - `Fake Coding: Use Preset - Realistic`
    - `Fake Coding: Use Preset - Fast Demo`
    - `Fake Coding: Use Preset - Slow Review`
-8. When you stop the session or switch to another file, the original content is restored. Only one file is ever temporarily modified at a time, and dirty files are restored without being auto-saved.
+10. When you stop the session or switch to another file, the original content is restored. Only one file is ever temporarily modified at a time, and dirty files are restored without being auto-saved.
 
 ## Commands
 
@@ -82,6 +84,14 @@ You can customize the extension with these settings:
 - `fake-coding.startFrom`: start fake coding from `fileStart`, `cursor`, or `selection`
 - `fake-coding.autoStopMinutes`: automatically stop after `0`, `5`, `15`, or `30` minutes
 - `fake-coding.saveOnStop`: whether to save the file after restoring the original content
+- `fake-coding.activityMinChars`: minimum local activity window size for follow and wander modes
+- `fake-coding.activityMaxChars`: maximum local activity window size for follow and wander modes
+- `fake-coding.wanderMinSeconds`: minimum dwell time before auto wander switches files
+- `fake-coding.wanderMaxSeconds`: maximum dwell time before auto wander switches files
+- `fake-coding.wanderSkipDirtyFiles`: skip already-dirty files when auto wander picks the next target
+- `fake-coding.wanderAllowLanguages`: optional VS Code language IDs to allow during auto wander
+- `fake-coding.wanderMaxFileChars`: skip files larger than this character count during auto wander
+- `fake-coding.wanderIgnorePaths`: skip files whose paths contain any of the configured substrings during auto wander
 
 Crash safety note: the extension stores the original content of the active fake-coding file in workspace state. If VSCode reloads or crashes mid-session, that snapshot is restored on the next activation.
 
@@ -91,7 +101,15 @@ Crash safety note: the extension stores the original content of the active fake-
   "fake-coding.mode": "steady",
   "fake-coding.startFrom": "fileStart",
   "fake-coding.autoStopMinutes": 0,
-  "fake-coding.saveOnStop": true
+  "fake-coding.saveOnStop": true,
+  "fake-coding.activityMinChars": 40,
+  "fake-coding.activityMaxChars": 80,
+  "fake-coding.wanderMinSeconds": 9,
+  "fake-coding.wanderMaxSeconds": 18,
+  "fake-coding.wanderSkipDirtyFiles": true,
+  "fake-coding.wanderAllowLanguages": [],
+  "fake-coding.wanderMaxFileChars": 0,
+  "fake-coding.wanderIgnorePaths": []
 }
 ```
 

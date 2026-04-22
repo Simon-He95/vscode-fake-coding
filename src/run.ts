@@ -1,15 +1,22 @@
 import type * as vscode from 'vscode'
 import { createRange, getConfiguration, getPosition, nextTick, setSelection, updateText } from '@vscode-use/utils'
-import { codingMap } from './utils'
+import { codingMap, runAsInternalEdit } from './utils'
 
-export type FakeCodingStatus = 'idle' | 'running' | 'paused'
+export type FakeCodingStatus = 'idle' | 'running' | 'paused' | 'waiting'
 export type FakeCodingSource = 'fileStart' | 'cursor' | 'selection'
 type Mode = 'steady' | 'realistic'
 
 export interface FakeCodingRange {
   startOffset: number
   endOffset: number
+  loop?: boolean
   source: FakeCodingSource
+}
+
+export interface FakeCodingProgress {
+  endOffset: number
+  startOffset: number
+  typedLength: number
 }
 
 const session = {
@@ -18,13 +25,20 @@ const session = {
   timer: null as NodeJS.Timeout | null,
   url: null as vscode.Uri | null,
   pauseCountdown: 0,
+  loop: true,
   startOffset: 0,
   endOffset: 0,
   source: 'fileStart' as FakeCodingSource,
 }
+let statusChangeListener: ((status: FakeCodingStatus) => void) | null = null
 
 function randomBetween(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
+function setStatus(status: FakeCodingStatus) {
+  session.status = status
+  statusChangeListener?.(status)
 }
 
 function clearTimer() {
@@ -64,9 +78,20 @@ function getNextDelay(segment: string) {
 function clearSegment(originCode: string) {
   const start = getPosition(session.startOffset, originCode).position
   const end = getPosition(session.endOffset, originCode).position
-  updateText((edit) => {
+  void runAsInternalEdit(() => updateText((edit) => {
     edit.delete(createRange(start, end))
-  })
+  }))
+}
+
+function getCurrentSegmentLength() {
+  if (!session.url)
+    return 0
+
+  const originCode = codingMap.get(session.url)
+  if (!originCode)
+    return 0
+
+  return originCode.slice(session.startOffset, session.endOffset).length
 }
 
 function scheduleNextTick() {
@@ -83,6 +108,12 @@ function scheduleNextTick() {
       return
 
     if (session.index >= segment.length) {
+      if (!session.loop) {
+        clearTimer()
+        setStatus('waiting')
+        return
+      }
+
       session.index = 0
       clearSegment(originCode)
       scheduleNextTick()
@@ -93,10 +124,10 @@ function scheduleNextTick() {
     const addText = segment[session.index]
     const offset = session.startOffset + beforeText.length
     const position = getPosition(offset, originCode).position
-    updateText((edit) => {
+    void runAsInternalEdit(() => updateText((edit) => {
       edit.insert(position, addText)
       setSelection(position, position)
-    })
+    }))
 
     session.index += 1
     scheduleNextTick()
@@ -111,19 +142,35 @@ export function getFakeCodingSource() {
   return session.source
 }
 
+export function getFakeCodingProgress(): FakeCodingProgress | null {
+  if (!session.url)
+    return null
+
+  return {
+    endOffset: session.endOffset,
+    startOffset: session.startOffset,
+    typedLength: Math.max(0, Math.min(session.index, session.endOffset - session.startOffset)),
+  }
+}
+
+export function onFakeCodingStatusChange(listener?: (status: FakeCodingStatus) => void) {
+  statusChangeListener = listener ?? null
+}
+
 export function startFakeCoding(url: vscode.Uri, range: FakeCodingRange) {
   const originCode = codingMap.get(url)
   if (!originCode || range.endOffset <= range.startOffset)
     return
 
   clearTimer()
-  session.status = 'running'
   session.index = 0
   session.url = url
   session.startOffset = range.startOffset
   session.endOffset = range.endOffset
+  session.loop = range.loop ?? true
   session.source = range.source
   resetPauseCountdown()
+  setStatus('running')
 
   clearSegment(originCode)
 
@@ -133,28 +180,34 @@ export function startFakeCoding(url: vscode.Uri, range: FakeCodingRange) {
 }
 
 export function pauseFakeCoding() {
-  if (session.status !== 'running')
+  if (session.status !== 'running' && session.status !== 'waiting')
     return
 
   clearTimer()
-  session.status = 'paused'
+  setStatus('paused')
 }
 
 export function resumeFakeCoding() {
   if (session.status !== 'paused')
     return
 
-  session.status = 'running'
+  if (!session.loop && session.index >= getCurrentSegmentLength()) {
+    setStatus('waiting')
+    return
+  }
+
+  setStatus('running')
   scheduleNextTick()
 }
 
 export function stopFakeCoding() {
   clearTimer()
-  session.status = 'idle'
   session.index = 0
   session.url = null
+  session.loop = true
   session.startOffset = 0
   session.endOffset = 0
   session.source = 'fileStart'
   resetPauseCountdown()
+  setStatus('idle')
 }

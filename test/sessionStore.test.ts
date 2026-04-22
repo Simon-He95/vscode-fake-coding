@@ -22,10 +22,12 @@ const mocks = vi.hoisted(() => {
     Range,
     WorkspaceEdit,
     applyEdit: vi.fn(async () => true),
+    fsStat: vi.fn(async () => ({ type: 1 })),
     get: vi.fn(),
     logger: {
       error: vi.fn(),
       info: vi.fn(),
+      warn: vi.fn(),
     },
     openTextDocument: vi.fn(),
     update: vi.fn(async () => {}),
@@ -41,12 +43,16 @@ vi.mock('vscode', () => ({
   WorkspaceEdit: mocks.WorkspaceEdit,
   workspace: {
     applyEdit: mocks.applyEdit,
+    fs: {
+      stat: mocks.fsStat,
+    },
     openTextDocument: mocks.openTextDocument,
   },
 }))
 
 vi.mock('../src/utils', () => ({
   logger: mocks.logger,
+  runAsInternalEdit: vi.fn((task: () => unknown) => task()),
 }))
 
 describe('sessionStore', () => {
@@ -117,5 +123,25 @@ describe('sessionStore', () => {
 
     expect(restored).toBe(true)
     expect(save).not.toHaveBeenCalled()
+  })
+
+  it('discards a missing snapshot target instead of retrying forever', async () => {
+    mocks.get.mockReturnValue({
+      content: 'restored',
+      fsPath: '/workspace/missing.ts',
+      wasDirty: false,
+    })
+    mocks.fsStat.mockRejectedValue({
+      code: 'FileNotFound',
+      message: 'ENOENT: no such file',
+      name: 'EntryNotFound (FileSystemError)',
+    })
+
+    const restored = await restorePersistedSession()
+
+    expect(restored).toBe(false)
+    expect(mocks.openTextDocument).not.toHaveBeenCalled()
+    expect(mocks.update).toHaveBeenCalledWith('fake-coding.active-snapshot', undefined)
+    expect(mocks.logger.warn).toHaveBeenCalledTimes(1)
   })
 })

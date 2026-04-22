@@ -3,34 +3,47 @@ import { resetCoding } from '../src/reset'
 import { codingMap } from '../src/utils'
 
 const mocks = vi.hoisted(() => ({
-  createRange: vi.fn((...args: unknown[]) => ({ args })),
+  Range: class Range {
+    args: unknown[]
+
+    constructor(...args: unknown[]) {
+      this.args = args
+    }
+  },
+  WorkspaceEdit: class WorkspaceEdit {
+    replacements: Array<{ range: unknown, text: string, uri: { fsPath: string } }> = []
+
+    replace(uri: { fsPath: string }, range: unknown, text: string) {
+      this.replacements.push({ range, text, uri })
+    }
+  },
+  applyEdit: vi.fn(async () => true),
   createLog: vi.fn(() => ({
     error: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
   })),
-  getActiveTextEditor: vi.fn(),
   getConfiguration: vi.fn(),
   getCurrentFileUrl: vi.fn(),
-  getPosition: vi.fn((offset: number) => ({ position: { offset } })),
-  jumpToLine: vi.fn(),
-  nextTick: vi.fn(async (callback?: (result?: boolean) => unknown) => callback?.(true)),
+  openTextDocument: vi.fn(),
   setSelection: vi.fn(),
   stopFakeCoding: vi.fn(),
-  updateText: vi.fn(),
 }))
 
 vi.mock('@vscode-use/utils', () => ({
-  createRange: mocks.createRange,
   createLog: mocks.createLog,
-  getActiveTextEditor: mocks.getActiveTextEditor,
   getConfiguration: mocks.getConfiguration,
   getCurrentFileUrl: mocks.getCurrentFileUrl,
-  getPosition: mocks.getPosition,
-  jumpToLine: mocks.jumpToLine,
-  nextTick: mocks.nextTick,
   setSelection: mocks.setSelection,
-  updateText: mocks.updateText,
+}))
+
+vi.mock('vscode', () => ({
+  Range: mocks.Range,
+  WorkspaceEdit: mocks.WorkspaceEdit,
+  workspace: {
+    applyEdit: mocks.applyEdit,
+    openTextDocument: mocks.openTextDocument,
+  },
 }))
 
 vi.mock('../src/run', () => ({
@@ -43,96 +56,109 @@ describe('resetCoding', () => {
     vi.clearAllMocks()
 
     mocks.getConfiguration.mockReturnValue(true)
-    mocks.getPosition.mockImplementation((offset: number) => ({ position: { offset } }))
-    mocks.nextTick.mockImplementation(async (callback?: (result?: boolean) => unknown) => callback?.(true))
+    mocks.openTextDocument.mockResolvedValue({
+      lineAt: () => ({ text: 'fake' }),
+      lineCount: 1,
+      save: vi.fn(async () => true),
+    })
   })
 
   it('restores and saves only the current file', async () => {
-    const replace = vi.fn()
     const save = vi.fn()
     const url = { fsPath: '/workspace/current.ts' }
 
     codingMap.set(url as never, 'hello')
     mocks.getCurrentFileUrl.mockReturnValue('/workspace/current.ts')
-    mocks.getActiveTextEditor.mockReturnValue({ document: { save } })
-    mocks.updateText.mockImplementation((callback: (edit: { replace: typeof replace }) => void) => {
-      callback({ replace })
+    mocks.openTextDocument.mockResolvedValue({
+      lineAt: () => ({ text: 'fake' }),
+      lineCount: 1,
+      save,
     })
 
-    await resetCoding(url as never)
+    const restored = await resetCoding(url as never)
 
+    expect(restored).toBe(true)
     expect(mocks.stopFakeCoding).toHaveBeenCalledTimes(1)
-    expect(mocks.jumpToLine).not.toHaveBeenCalled()
-    expect(replace).toHaveBeenCalledTimes(1)
+    expect(mocks.openTextDocument).toHaveBeenCalledWith(url)
+    expect(mocks.applyEdit).toHaveBeenCalledTimes(1)
+    expect(mocks.setSelection).toHaveBeenCalledWith([0, 0], [0, 0])
     expect(save).toHaveBeenCalledTimes(1)
     expect(codingMap.has(url as never)).toBe(false)
   })
 
-  it('restores, saves target file, and jumps back when switching files', async () => {
-    const replace = vi.fn()
-    const currentSave = vi.fn()
+  it('restores and saves a background file without jumping away', async () => {
     const targetSave = vi.fn()
     const url = { fsPath: '/workspace/target.ts' }
-    let activeEditor = { document: { save: currentSave } }
 
     codingMap.set(url as never, 'hello')
     mocks.getCurrentFileUrl.mockReturnValue('/workspace/current.ts')
-    mocks.getActiveTextEditor.mockImplementation(() => activeEditor)
-    mocks.jumpToLine.mockImplementation(async (_line: number, filepath?: string) => {
-      activeEditor = filepath === '/workspace/target.ts'
-        ? { document: { save: targetSave } }
-        : { document: { save: currentSave } }
-      return activeEditor
-    })
-    mocks.updateText.mockImplementation((callback: (edit: { replace: typeof replace }) => void) => {
-      callback({ replace })
+    mocks.openTextDocument.mockResolvedValue({
+      lineAt: () => ({ text: 'fake' }),
+      lineCount: 1,
+      save: targetSave,
     })
 
-    await resetCoding(url as never)
+    const restored = await resetCoding(url as never)
 
-    expect(mocks.jumpToLine).toHaveBeenNthCalledWith(1, 0, '/workspace/target.ts')
-    expect(mocks.jumpToLine).toHaveBeenNthCalledWith(2, 0, '/workspace/current.ts')
-    expect(replace).toHaveBeenCalledTimes(1)
+    expect(restored).toBe(true)
+    expect(mocks.openTextDocument).toHaveBeenCalledWith(url)
+    expect(mocks.applyEdit).toHaveBeenCalledTimes(1)
+    const [[editArg]] = mocks.applyEdit.mock.calls as unknown as [[InstanceType<typeof mocks.WorkspaceEdit>]]
+    expect(editArg.replacements).toHaveLength(1)
+    expect(editArg.replacements[0]?.text).toBe('hello')
     expect(targetSave).toHaveBeenCalledTimes(1)
-    expect(currentSave).not.toHaveBeenCalled()
+    expect(mocks.setSelection).not.toHaveBeenCalled()
     expect(codingMap.has(url as never)).toBe(false)
   })
 
   it('skips saving when saveOnStop is disabled', async () => {
-    const replace = vi.fn()
     const save = vi.fn()
     const url = { fsPath: '/workspace/current.ts' }
 
     codingMap.set(url as never, 'hello')
     mocks.getConfiguration.mockReturnValue(false)
     mocks.getCurrentFileUrl.mockReturnValue('/workspace/current.ts')
-    mocks.getActiveTextEditor.mockReturnValue({ document: { save } })
-    mocks.updateText.mockImplementation((callback: (edit: { replace: typeof replace }) => void) => {
-      callback({ replace })
+    mocks.openTextDocument.mockResolvedValue({
+      lineAt: () => ({ text: 'fake' }),
+      lineCount: 1,
+      save,
     })
 
-    await resetCoding(url as never)
+    const restored = await resetCoding(url as never)
 
-    expect(replace).toHaveBeenCalledTimes(1)
+    expect(restored).toBe(true)
     expect(save).not.toHaveBeenCalled()
   })
 
   it('restores without saving when the original file was already dirty', async () => {
-    const replace = vi.fn()
     const save = vi.fn()
     const url = { fsPath: '/workspace/current.ts' }
 
     codingMap.set(url as never, 'hello')
     mocks.getConfiguration.mockReturnValue(true)
     mocks.getCurrentFileUrl.mockReturnValue('/workspace/current.ts')
-    mocks.getActiveTextEditor.mockReturnValue({ document: { save } })
-    mocks.updateText.mockImplementation((callback: (edit: { replace: typeof replace }) => void) => {
-      callback({ replace })
+    mocks.openTextDocument.mockResolvedValue({
+      lineAt: () => ({ text: 'fake' }),
+      lineCount: 1,
+      save,
     })
 
-    await resetCoding(url as never, { wasDirty: true })
+    const restored = await resetCoding(url as never, { wasDirty: true })
 
-    expect(replace).toHaveBeenCalledTimes(1)
+    expect(restored).toBe(true)
     expect(save).not.toHaveBeenCalled()
+  })
+
+  it('keeps the source code cached when applying the restore edit fails', async () => {
+    const url = { fsPath: '/workspace/current.ts' }
+
+    codingMap.set(url as never, 'hello')
+    mocks.getCurrentFileUrl.mockReturnValue('/workspace/current.ts')
+    mocks.applyEdit.mockResolvedValue(false)
+
+    const restored = await resetCoding(url as never)
+
+    expect(restored).toBe(false)
+    expect(codingMap.get(url as never)).toBe('hello')
   })
 })

@@ -76,15 +76,23 @@ const mocks = vi.hoisted(() => {
       return undefined
     }),
     getFakeCodingSource: vi.fn(() => 'fileStart'),
+    getFakeCodingProgress: vi.fn(() => ({
+      endOffset: 18,
+      startOffset: 0,
+      typedLength: 18,
+    })),
     getFakeCodingStatus: vi.fn(() => state.status),
     getPersistedSession: vi.fn(() => undefined),
+    isInternalEdit: vi.fn(() => false),
     initSessionStore: vi.fn(),
     logger: {
       error: vi.fn(),
+      warn: vi.fn(),
     },
     pauseFakeCoding: vi.fn(() => {
       state.status = 'paused'
     }),
+    onFakeCodingStatusChange: vi.fn(),
     registerCommand: vi.fn((name: string, callback: () => unknown) => {
       commands.set(name, callback)
     }),
@@ -96,14 +104,26 @@ const mocks = vi.hoisted(() => {
       state.status = 'running'
     }),
     savePersistedSession: vi.fn(async () => {}),
+    showQuickPick: vi.fn(async () => ({
+      label: 'Current File',
+      mode: 'single',
+    })),
     startFakeCoding: vi.fn(() => {
       state.status = 'running'
     }),
-    status: 'idle' as 'idle' | 'running' | 'paused',
+    status: 'idle' as 'idle' | 'running' | 'paused' | 'waiting',
+    statusChangeListener: null as null | ((status: 'idle' | 'running' | 'paused' | 'waiting') => void),
+    stopFakeCoding: vi.fn(() => {
+      state.status = 'idle'
+    }),
     workspace: {
       getConfiguration: vi.fn(() => ({
         update: vi.fn(async () => {}),
       })),
+      onDidChangeTextDocument: vi.fn((callback: (event: unknown) => unknown) => {
+        events.set('document-change', callback)
+        return { dispose: vi.fn() }
+      }),
       openTextDocument: vi.fn(),
     },
   }
@@ -129,6 +149,7 @@ vi.mock('vscode', () => ({
     get activeTextEditor() {
       return mocks.activeEditor
     },
+    showQuickPick: mocks.showQuickPick,
     showTextDocument: vi.fn(),
     tabGroups: {
       all: [],
@@ -142,11 +163,16 @@ vi.mock('../src/reset', () => ({
 }))
 
 vi.mock('../src/run', () => ({
+  getFakeCodingProgress: mocks.getFakeCodingProgress,
   getFakeCodingSource: mocks.getFakeCodingSource,
   getFakeCodingStatus: mocks.getFakeCodingStatus,
+  onFakeCodingStatusChange: vi.fn((listener?: (status: 'idle' | 'running' | 'paused' | 'waiting') => void) => {
+    mocks.statusChangeListener = listener ?? null
+  }),
   pauseFakeCoding: mocks.pauseFakeCoding,
   resumeFakeCoding: mocks.resumeFakeCoding,
   startFakeCoding: mocks.startFakeCoding,
+  stopFakeCoding: mocks.stopFakeCoding,
 }))
 
 vi.mock('../src/sessionStore', () => ({
@@ -159,13 +185,36 @@ vi.mock('../src/sessionStore', () => ({
 
 vi.mock('../src/utils', () => ({
   codingMap: mocks.codingMap,
+  isInternalEdit: mocks.isInternalEdit,
   logger: mocks.logger,
+  runAsInternalEdit: vi.fn((task: () => unknown) => task()),
 }))
 
 vi.mock('../src/wander', () => ({
   collectOpenFileUris: vi.fn(() => []),
+  isWanderLanguageAllowed: vi.fn(() => true),
+  listWanderTargets: vi.fn(() => []),
+  matchesWanderIgnorePath: vi.fn(() => false),
   pickNextWanderTarget: vi.fn(() => null),
   randomBetween: vi.fn(() => 3000),
+  resolveActivityWindow: vi.fn((originCode: string) => ({
+    endOffset: originCode.length,
+    startOffset: 0,
+  })),
+}))
+
+vi.mock('../src/manualEdit', () => ({
+  applyManualEditsToOrigin: vi.fn((originCode: string, changes: Array<{ rangeLength: number, rangeOffset: number, text: string }>) => {
+    let nextCode = originCode
+    for (let index = changes.length - 1; index >= 0; index -= 1) {
+      const change = changes[index]
+      if (!change)
+        continue
+
+      nextCode = `${nextCode.slice(0, change.rangeOffset)}${change.text}${nextCode.slice(change.rangeOffset + change.rangeLength)}`
+    }
+    return nextCode
+  }),
 }))
 
 function createEditor(fsPath: string, text: string) {
@@ -193,6 +242,7 @@ describe('extension active editor handling', () => {
     mocks.events.clear()
     mocks.codingMap.clear()
     mocks.status = 'idle'
+    mocks.statusChangeListener = null
     mocks.activeEditor = createEditor('/workspace/demo.ts', 'const value = 1')
 
     await import('../src/index')
@@ -212,5 +262,67 @@ describe('extension active editor handling', () => {
 
     expect(mocks.startFakeCoding).toHaveBeenCalledTimes(1)
     expect(mocks.resetCoding).not.toHaveBeenCalled()
+  })
+
+  it('lets the bottom bar choose a start mode while idle', async () => {
+    await mocks.commands.get('fake-coding.toggle')?.()
+
+    expect(mocks.showQuickPick).toHaveBeenCalledTimes(1)
+    expect(mocks.startFakeCoding).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats waiting as an active session when toggling from the bottom bar', async () => {
+    mocks.status = 'waiting'
+
+    await mocks.commands.get('fake-coding.toggle')?.()
+
+    expect(mocks.executeCommand).toHaveBeenCalledWith('fake-coding.pause')
+  })
+
+  it('re-arms wander after a waiting step with no eligible target', async () => {
+    vi.useFakeTimers()
+    try {
+      await mocks.commands.get('fake-coding.startWander')?.()
+      mocks.activeEditor = null
+      mocks.status = 'waiting'
+      mocks.statusChangeListener?.('waiting')
+
+      expect(vi.getTimerCount()).toBe(1)
+
+      await vi.advanceTimersByTimeAsync(3000)
+
+      expect(vi.getTimerCount()).toBe(1)
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops and clears the session when the user edits the active file', async () => {
+    await mocks.commands.get('fake-coding.start')?.()
+    await Promise.resolve()
+    await Promise.resolve()
+    mocks.status = 'waiting'
+
+    const callback = mocks.events.get('document-change')
+    await callback?.({
+      contentChanges: [{
+        rangeLength: 0,
+        rangeOffset: 15,
+        text: 'x',
+      }],
+      document: {
+        getText: () => 'const value = 1x',
+        lineAt: () => ({ text: 'const value = 1x' }),
+        lineCount: 1,
+        uri: { fsPath: '/workspace/demo.ts' },
+      },
+    })
+    await Promise.resolve()
+
+    expect(mocks.stopFakeCoding).toHaveBeenCalledTimes(1)
+    expect(mocks.clearPersistedSession).toHaveBeenCalledTimes(1)
+    expect(mocks.resetCoding).not.toHaveBeenCalled()
+    expect(mocks.codingMap.size).toBe(0)
   })
 })

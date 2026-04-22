@@ -42,20 +42,22 @@
 3. 你也可以从更具体的范围开始：
    - `Fake Coding: Start From Cursor`
    - `Fake Coding: Start From Selection`
-4. 如果你想要更真实的交互，也可以使用：
+4. 空闲状态下点击状态栏按钮，也可以直接选择启动模式。
+5. 如果你想要更真实的交互，也可以使用：
    - `Fake Coding: Start Interactive`：跟随你手动激活的文件切换
    - `Fake Coding: Start Wander`：自动在已打开文件 tab 之间切换，并带有短暂停顿
-5. 插件会从指定范围开始输入内容
-6. 你可以通过状态栏按钮或命令面板控制当前会话：
+6. `Follow` 和 `Wander` 会优先在较小的局部活动区内模拟输入，而不是整文件重播，这样切换时更自然，也不会整页闪烁。
+7. 插件会从指定范围开始输入内容
+8. 你可以通过状态栏按钮或命令面板控制当前会话：
    - `Fake Coding: Pause`
    - `Fake Coding: Resume`
    - `Fake Coding: Stop`
-7. 你可以通过命令面板切换 preset：
+9. 你可以通过命令面板切换 preset：
    - `Fake Coding: Use Preset - Steady`
    - `Fake Coding: Use Preset - Realistic`
    - `Fake Coding: Use Preset - Fast Demo`
    - `Fake Coding: Use Preset - Slow Review`
-8. 当你停止会话或切换到其他文件时，原始内容会被恢复。同一时间只会有一个文件处于临时改写状态；如果原文件本来就是未保存状态，恢复时不会自动保存。
+10. 当你停止会话或切换到其他文件时，原始内容会被恢复。同一时间只会有一个文件处于临时改写状态；如果原文件本来就是未保存状态，恢复时不会自动保存。
 
 ## 命令
 
@@ -82,6 +84,10 @@
 - `fake-coding.startFrom`：模拟输入起点，可选 `fileStart`、`cursor`、`selection`
 - `fake-coding.autoStopMinutes`：自动停止时间，可选 `0`、`5`、`15`、`30`
 - `fake-coding.saveOnStop`：恢复原始内容后是否保存文件
+- `fake-coding.wanderMinSeconds`：自动游走切换文件前的最短停留秒数
+- `fake-coding.wanderMaxSeconds`：自动游走切换文件前的最长停留秒数
+- `fake-coding.wanderSkipDirtyFiles`：自动游走时跳过已经是脏状态的文件
+- `fake-coding.wanderAllowLanguages`：限制自动游走只进入指定的 VS Code 语言 ID
 
 异常恢复说明：插件会把当前 fake coding 文件的原始内容快照保存到 workspace state。若 VSCode 在会话中途重载或崩溃，下次激活扩展时会优先恢复该快照。
 
@@ -91,7 +97,11 @@
   "fake-coding.mode": "steady",
   "fake-coding.startFrom": "fileStart",
   "fake-coding.autoStopMinutes": 0,
-  "fake-coding.saveOnStop": true
+  "fake-coding.saveOnStop": true,
+  "fake-coding.wanderMinSeconds": 9,
+  "fake-coding.wanderMaxSeconds": 18,
+  "fake-coding.wanderSkipDirtyFiles": true,
+  "fake-coding.wanderAllowLanguages": []
 }
 ```
 

@@ -146,6 +146,64 @@
           "type": "boolean",
           "default": true,
           "description": "Save the file after restoring original content when stopped."
+        },
+        "fake-coding.activityMinChars": {
+          "type": "number",
+          "default": 40,
+          "description": "Minimum fake activity window size for follow and wander modes, measured in characters."
+        },
+        "fake-coding.activityMaxChars": {
+          "type": "number",
+          "default": 80,
+          "description": "Maximum fake activity window size for follow and wander modes, measured in characters."
+        },
+        "fake-coding.wanderMinSeconds": {
+          "type": "number",
+          "enum": [
+            5,
+            9,
+            15,
+            30
+          ],
+          "default": 9,
+          "description": "Minimum seconds to stay in a file before auto wander switches again."
+        },
+        "fake-coding.wanderMaxSeconds": {
+          "type": "number",
+          "enum": [
+            9,
+            18,
+            30,
+            45
+          ],
+          "default": 18,
+          "description": "Maximum seconds to stay in a file before auto wander switches again."
+        },
+        "fake-coding.wanderSkipDirtyFiles": {
+          "type": "boolean",
+          "default": true,
+          "description": "Skip already-dirty files when auto wander looks for the next target."
+        },
+        "fake-coding.wanderAllowLanguages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Only wander into these VS Code language IDs. Leave empty to allow all languages."
+        },
+        "fake-coding.wanderMaxFileChars": {
+          "type": "number",
+          "default": 0,
+          "description": "Skip files larger than this many characters during auto wander. 0 disables the limit."
+        },
+        "fake-coding.wanderIgnorePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Skip files whose paths contain any of these substrings during auto wander."
         }
       }
     }
@@ -155,13 +213,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "tsup",
+    "build:minify": "tsup --minify",
     "pack": "npm run build && vsce package --no-dependencies",
     "lint": "eslint . --cache",
     "lint:fix": "npm run lint --fix",
     "publish": "npm run build && vsce publish --no-dependencies",
     "typecheck": "tsc --noEmit",
     "verify": "npm run lint && npm run typecheck && npm run test && npm run build",
-    "release": "npm run build --minify && bumpp && npm run publish"
+    "release": "npm run build:minify && bumpp && npm run publish"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^3.12.1",

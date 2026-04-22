@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getFakeCodingSource, startFakeCoding, stopFakeCoding } from '../src/run'
+import { getFakeCodingSource, getFakeCodingStatus, pauseFakeCoding, resumeFakeCoding, startFakeCoding, stopFakeCoding } from '../src/run'
 import { codingMap } from '../src/utils'
 
 const mocks = vi.hoisted(() => ({
@@ -86,5 +86,58 @@ describe('startFakeCoding', () => {
     stopFakeCoding()
 
     expect(getFakeCodingSource()).toBe('fileStart')
+  })
+
+  it('can stop on the current segment without replaying it', () => {
+    const deleteEdit = vi.fn()
+    const insertEdit = vi.fn()
+    const url = { fsPath: '/workspace/demo.ts' }
+
+    codingMap.set(url as never, 'abcdef')
+    mocks.updateText.mockImplementation((callback: (edit: { delete: typeof deleteEdit, insert: typeof insertEdit }) => void) => {
+      callback({ delete: deleteEdit, insert: insertEdit })
+    })
+
+    startFakeCoding(url as never, {
+      startOffset: 2,
+      endOffset: 4,
+      loop: false,
+      source: 'cursor',
+    })
+
+    vi.advanceTimersByTime(4)
+
+    expect(insertEdit).toHaveBeenCalledTimes(2)
+    expect(deleteEdit).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(20)
+
+    expect(insertEdit).toHaveBeenCalledTimes(2)
+    expect(deleteEdit).toHaveBeenCalledTimes(1)
+    expect(getFakeCodingStatus()).toBe('waiting')
+  })
+
+  it('pauses and resumes after reaching the waiting state', () => {
+    const url = { fsPath: '/workspace/demo.ts' }
+
+    codingMap.set(url as never, 'abcdef')
+    mocks.updateText.mockImplementation(() => {})
+
+    startFakeCoding(url as never, {
+      startOffset: 2,
+      endOffset: 4,
+      loop: false,
+      source: 'cursor',
+    })
+
+    vi.advanceTimersByTime(4)
+
+    expect(getFakeCodingStatus()).toBe('waiting')
+
+    pauseFakeCoding()
+    expect(getFakeCodingStatus()).toBe('paused')
+
+    resumeFakeCoding()
+    expect(getFakeCodingStatus()).toBe('waiting')
   })
 })
