@@ -3,6 +3,9 @@ import { getFakeCodingSource, getFakeCodingStatus, pauseFakeCoding, resumeFakeCo
 import { codingMap } from '../src/utils'
 
 const mocks = vi.hoisted(() => ({
+  activeEditor: null as null | {
+    edit: (callback: (edit: { delete: ReturnType<typeof vi.fn>, insert: ReturnType<typeof vi.fn> }) => void) => Promise<boolean>
+  },
   createRange: vi.fn((start: unknown, end: unknown) => ({ start, end })),
   createLog: vi.fn(() => ({
     error: vi.fn(),
@@ -13,7 +16,6 @@ const mocks = vi.hoisted(() => ({
   getPosition: vi.fn((offset: number) => ({ position: { offset } })),
   nextTick: vi.fn((callback?: () => void) => callback?.()),
   setSelection: vi.fn(),
-  updateText: vi.fn(),
 }))
 
 vi.mock('@vscode-use/utils', () => ({
@@ -23,7 +25,14 @@ vi.mock('@vscode-use/utils', () => ({
   getPosition: mocks.getPosition,
   nextTick: mocks.nextTick,
   setSelection: mocks.setSelection,
-  updateText: mocks.updateText,
+}))
+
+vi.mock('vscode', () => ({
+  window: {
+    get activeTextEditor() {
+      return mocks.activeEditor
+    },
+  },
 }))
 
 describe('startFakeCoding', () => {
@@ -40,17 +49,29 @@ describe('startFakeCoding', () => {
         return 'steady'
       return undefined
     })
+    mocks.activeEditor = {
+      edit: vi.fn(async (callback: (edit: { delete: ReturnType<typeof vi.fn>, insert: ReturnType<typeof vi.fn> }) => void) => {
+        callback({
+          delete: vi.fn(),
+          insert: vi.fn(),
+        })
+        return true
+      }),
+    }
   })
 
-  it('types only within the configured segment', () => {
+  it('types only within the configured segment', async () => {
     const deleteEdit = vi.fn()
     const insertEdit = vi.fn()
     const url = { fsPath: '/workspace/demo.ts' }
 
     codingMap.set(url as never, 'abcdef')
-    mocks.updateText.mockImplementation((callback: (edit: { delete: typeof deleteEdit, insert: typeof insertEdit }) => void) => {
-      callback({ delete: deleteEdit, insert: insertEdit })
-    })
+    mocks.activeEditor = {
+      edit: vi.fn(async (callback: (edit: { delete: typeof deleteEdit, insert: typeof insertEdit }) => void) => {
+        callback({ delete: deleteEdit, insert: insertEdit })
+        return true
+      }),
+    }
 
     startFakeCoding(url as never, {
       startOffset: 2,
@@ -63,7 +84,7 @@ describe('startFakeCoding', () => {
       end: { offset: 4 },
     })
 
-    vi.advanceTimersByTime(2)
+    await vi.advanceTimersByTimeAsync(2)
 
     expect(insertEdit).toHaveBeenNthCalledWith(1, { offset: 2 }, 'c')
     expect(insertEdit).toHaveBeenNthCalledWith(2, { offset: 3 }, 'd')
@@ -73,7 +94,6 @@ describe('startFakeCoding', () => {
     const url = { fsPath: '/workspace/demo.ts' }
 
     codingMap.set(url as never, 'abcdef')
-    mocks.updateText.mockImplementation(() => {})
 
     startFakeCoding(url as never, {
       startOffset: 0,
@@ -88,15 +108,18 @@ describe('startFakeCoding', () => {
     expect(getFakeCodingSource()).toBe('fileStart')
   })
 
-  it('can stop on the current segment without replaying it', () => {
+  it('can stop on the current segment without replaying it', async () => {
     const deleteEdit = vi.fn()
     const insertEdit = vi.fn()
     const url = { fsPath: '/workspace/demo.ts' }
 
     codingMap.set(url as never, 'abcdef')
-    mocks.updateText.mockImplementation((callback: (edit: { delete: typeof deleteEdit, insert: typeof insertEdit }) => void) => {
-      callback({ delete: deleteEdit, insert: insertEdit })
-    })
+    mocks.activeEditor = {
+      edit: vi.fn(async (callback: (edit: { delete: typeof deleteEdit, insert: typeof insertEdit }) => void) => {
+        callback({ delete: deleteEdit, insert: insertEdit })
+        return true
+      }),
+    }
 
     startFakeCoding(url as never, {
       startOffset: 2,
@@ -105,23 +128,22 @@ describe('startFakeCoding', () => {
       source: 'cursor',
     })
 
-    vi.advanceTimersByTime(4)
+    await vi.advanceTimersByTimeAsync(4)
 
     expect(insertEdit).toHaveBeenCalledTimes(2)
     expect(deleteEdit).toHaveBeenCalledTimes(1)
 
-    vi.advanceTimersByTime(20)
+    await vi.advanceTimersByTimeAsync(20)
 
     expect(insertEdit).toHaveBeenCalledTimes(2)
     expect(deleteEdit).toHaveBeenCalledTimes(1)
     expect(getFakeCodingStatus()).toBe('waiting')
   })
 
-  it('pauses and resumes after reaching the waiting state', () => {
+  it('pauses and resumes after reaching the waiting state', async () => {
     const url = { fsPath: '/workspace/demo.ts' }
 
     codingMap.set(url as never, 'abcdef')
-    mocks.updateText.mockImplementation(() => {})
 
     startFakeCoding(url as never, {
       startOffset: 2,
@@ -130,7 +152,7 @@ describe('startFakeCoding', () => {
       source: 'cursor',
     })
 
-    vi.advanceTimersByTime(4)
+    await vi.advanceTimersByTimeAsync(4)
 
     expect(getFakeCodingStatus()).toBe('waiting')
 

@@ -1,5 +1,5 @@
-import type * as vscode from 'vscode'
-import { createRange, getConfiguration, getPosition, nextTick, setSelection, updateText } from '@vscode-use/utils'
+import { createRange, getConfiguration, getPosition, nextTick, setSelection } from '@vscode-use/utils'
+import * as vscode from 'vscode'
 import { codingMap, runAsInternalEdit } from './utils'
 
 export type FakeCodingStatus = 'idle' | 'running' | 'paused' | 'waiting'
@@ -75,12 +75,20 @@ function getNextDelay(segment: string) {
   return delay
 }
 
+async function applyActiveEditorEdit(callback: Parameters<vscode.TextEditor['edit']>[0]) {
+  const editor = vscode.window.activeTextEditor
+  if (!editor)
+    return false
+
+  return runAsInternalEdit(() => editor.edit(callback))
+}
+
 function clearSegment(originCode: string) {
   const start = getPosition(session.startOffset, originCode).position
   const end = getPosition(session.endOffset, originCode).position
-  void runAsInternalEdit(() => updateText((edit) => {
+  return applyActiveEditorEdit((edit) => {
     edit.delete(createRange(start, end))
-  }))
+  })
 }
 
 function getCurrentSegmentLength() {
@@ -103,7 +111,7 @@ function scheduleNextTick() {
     return
   const segment = originCode.slice(session.startOffset, session.endOffset)
 
-  session.timer = setTimeout(() => {
+  session.timer = setTimeout(async () => {
     if (session.status !== 'running' || !session.url)
       return
 
@@ -115,8 +123,9 @@ function scheduleNextTick() {
       }
 
       session.index = 0
-      clearSegment(originCode)
-      scheduleNextTick()
+      const cleared = await clearSegment(originCode)
+      if (cleared)
+        scheduleNextTick()
       return
     }
 
@@ -124,10 +133,12 @@ function scheduleNextTick() {
     const addText = segment[session.index]
     const offset = session.startOffset + beforeText.length
     const position = getPosition(offset, originCode).position
-    void runAsInternalEdit(() => updateText((edit) => {
+    const applied = await applyActiveEditorEdit((edit) => {
       edit.insert(position, addText)
       setSelection(position, position)
-    }))
+    })
+    if (!applied)
+      return
 
     session.index += 1
     scheduleNextTick()
@@ -172,10 +183,13 @@ export function startFakeCoding(url: vscode.Uri, range: FakeCodingRange) {
   resetPauseCountdown()
   setStatus('running')
 
-  clearSegment(originCode)
+  void clearSegment(originCode).then((cleared) => {
+    if (!cleared)
+      return
 
-  nextTick(() => {
-    scheduleNextTick()
+    nextTick(() => {
+      scheduleNextTick()
+    })
   })
 }
 
