@@ -33,6 +33,10 @@ function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+function isCurrentActiveFile(editor?: vscode.TextEditor) {
+  return !!editor && !!activeFileUrl && editor.document.uri.fsPath === activeFileUrl.fsPath
+}
+
 async function runIgnoringActiveTextChange(task: () => Promise<void> | void) {
   ignoreActiveTextChange = true
   try {
@@ -323,25 +327,35 @@ export = createExtension(async (context, disposals = []) => {
 
   registerCommand('fake-coding.start', () => {
     const source = (getConfiguration('fake-coding.startFrom') as StartFrom) || 'fileStart'
-    void startWithSource(source)
+    void runIgnoringActiveTextChange(async () => {
+      await startWithSource(source)
+    })
   })
 
   registerCommand('fake-coding.startFromCursor', () => {
-    void startWithSource('cursor')
+    void runIgnoringActiveTextChange(async () => {
+      await startWithSource('cursor')
+    })
   })
 
   registerCommand('fake-coding.startFromSelection', () => {
-    void startWithSource('selection')
+    void runIgnoringActiveTextChange(async () => {
+      await startWithSource('selection')
+    })
   })
 
   registerCommand('fake-coding.startInteractive', () => {
     const source = (getConfiguration('fake-coding.startFrom') as StartFrom) || 'fileStart'
-    void startWithSource(source, { mode: 'follow' })
+    void runIgnoringActiveTextChange(async () => {
+      await startWithSource(source, { mode: 'follow' })
+    })
   })
 
   registerCommand('fake-coding.startWander', () => {
     const source = (getConfiguration('fake-coding.startFrom') as StartFrom) || 'fileStart'
-    void startWithSource(source, { mode: 'wander' })
+    void runIgnoringActiveTextChange(async () => {
+      await startWithSource(source, { mode: 'wander' })
+    })
   })
 
   registerCommand('fake-coding.pause', () => {
@@ -390,6 +404,9 @@ export = createExtension(async (context, disposals = []) => {
 
   addEventListener('activeText-change', (editor) => {
     if (ignoreActiveTextChange)
+      return
+
+    if (isCurrentActiveFile(editor))
       return
 
     if (interactionMode === 'follow') {
