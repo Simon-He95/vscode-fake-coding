@@ -151,17 +151,17 @@
     }
   },
   "scripts": {
-    "dev": "nr build",
+    "dev": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "tsup",
     "pack": "npm run build && vsce package --no-dependencies",
     "lint": "eslint . --cache",
-    "lint:fix": "nr lint --fix",
+    "lint:fix": "npm run lint --fix",
     "publish": "npm run build && vsce publish --no-dependencies",
     "typecheck": "tsc --noEmit",
     "verify": "npm run lint && npm run typecheck && npm run test && npm run build",
-    "release": "nr build --minify && bumpp && nr publish"
+    "release": "npm run build --minify && bumpp && npm run publish"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^3.12.1",
